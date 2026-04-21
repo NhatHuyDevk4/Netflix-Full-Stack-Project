@@ -1,0 +1,82 @@
+package com.nextflix.clone.security;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
+
+@Component
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        String jwt = extractJwtFromRequest(request);
+        String username = jwtUtil.getUsernameFromToken(jwt);
+
+        if(shouldProcessRequest(request, username)) {
+            // Nếu token hợp lệ, bạn có thể thiết lập Authentication trong SecurityContext ở đây
+            // Ví dụ: SecurityContextHolder.getContext().setAuthentication(authentication);
+            processAuthentication(request, jwt, username);
+        }
+
+        filterChain.doFilter(request, response);
+    }
+
+    private void processAuthentication(HttpServletRequest request, String jwt,String username) {
+        if(jwtUtil.validateToken(jwt)){
+            UserDetails userDetails = createUserDetailsFromToken(jwt, username);
+            setAuthenticationInContext(request,userDetails);
+        }
+    }
+
+    private void setAuthenticationInContext(HttpServletRequest request, UserDetails userDetails) {
+        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
+                userDetails, null, userDetails.getAuthorities()
+        );
+        authenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authenticationToken );
+    }
+
+    private UserDetails createUserDetailsFromToken(String jwt, String username) {
+        String role = jwtUtil.getRoleFromToken(jwt);
+
+        return User.builder()
+                .username(username)
+                .password("")
+                .authorities(Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role)))
+                .build();
+    }
+
+    private String extractJwtFromRequest(HttpServletRequest request) {
+        final String authorizationHeader = request.getHeader("Authorization");
+        final String requestURI = request.getRequestURI();
+        if(authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+            return authorizationHeader.substring(7); // line này là để lấy phần token sau "Bearer "
+        } else if ((requestURI.contains("/api/files/video") || requestURI.contains("/api/files/image")) && request.getParameter("token") != null) {
+            return request.getParameter("token");
+        } else {
+            return null;
+
+        }
+    }
+
+    private boolean shouldProcessRequest(HttpServletRequest request, String username) {
+        return username!=null && SecurityContextHolder.getContext().getAuthentication() == null;
+    }
+}
