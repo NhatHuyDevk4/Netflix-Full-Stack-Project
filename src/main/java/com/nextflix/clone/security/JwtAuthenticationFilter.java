@@ -27,12 +27,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         String jwt = extractJwtFromRequest(request);
-        String username = jwtUtil.getUsernameFromToken(jwt);
 
-        if(shouldProcessRequest(request, username)) {
-            // Nếu token hợp lệ, bạn có thể thiết lập Authentication trong SecurityContext ở đây
-            // Ví dụ: SecurityContextHolder.getContext().setAuthentication(authentication);
-            processAuthentication(request, jwt, username);
+        if (jwt != null) {
+            String username = jwtUtil.getUsernameFromToken(jwt);
+
+            if (shouldProcessRequest(request, username)) {
+                processAuthentication(request, jwt, username);
+            }
         }
 
         filterChain.doFilter(request, response);
