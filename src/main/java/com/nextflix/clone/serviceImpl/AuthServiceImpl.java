@@ -104,4 +104,73 @@ public class AuthServiceImpl implements AuthService {
         userRepository.save(user);
         return new MessageResponse("Email verified successfully for " + user.getEmail());
     }
+
+    @Override
+    public MessageResponse resendVerificationEmail(String email) {
+        User user = serviceUtils.getUserByEmailOrThrow(email);
+        String verificationToken = UUID.randomUUID().toString();
+        user.setVerificationToken(verificationToken);
+        user.setVerificationTokenExpiry(Instant.now().plusSeconds(86400)); // 24 hours expiry
+        userRepository.save(user);
+        emailService.sendVerificationEmail(email, verificationToken);
+        return new MessageResponse("Verification email resent to " + email);
+    }
+
+    @Override
+    public MessageResponse forgotPassword(String email) {
+        // B1: Check if user exists
+        User user = serviceUtils.getUserByEmailOrThrow(email);
+
+        // B2: Tạo token reset mật khẩu và gửi email
+        String resetToken = UUID.randomUUID().toString();
+
+        // B3: Lưu token vào database và gửi email
+        user.setPasswordResetToken(resetToken);
+        user.setVerificationTokenExpiry(Instant.now().plusSeconds(3600)); // 1 hour expiry
+        userRepository.save(user);
+        emailService.sendPasswordResetEmail(email, resetToken);
+        return new MessageResponse("Password reset email sent to " + email);
+    }
+
+    @Override
+    public MessageResponse resetPassword(String token, String newPassword) {
+        // B1: Validate token and reset password
+        User user = userRepository
+                .findByPasswordResetToken(token)
+                .orElseThrow(() -> new InvalidTokenException("Invalid or expired password reset token"));
+
+        // B2: Check if token has expired
+        if(user.getPasswordResetTokenExpiry() == null || user.getPasswordResetTokenExpiry().isBefore(Instant.now())) {
+            throw new InvalidTokenException("Password reset token has expired");
+        }
+
+        // B3: Update password and clear reset token
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setPasswordResetToken(null);
+        user.setPasswordResetTokenExpiry(null);
+        userRepository.save(user);
+        return new MessageResponse("Password reset successfully. You can now log in with your new password.");
+    }
+
+    @Override
+    public MessageResponse changePassword(String email, String currentPassword, String newPassword) {
+
+        User user = serviceUtils.getUserByEmailOrThrow(email);
+
+        if(!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new RuntimeException("Current password is incorrect");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        return new MessageResponse("Password changed successfully");
+    }
+
+    @Override
+    public LoginResponse getCurrentUser(String email) {
+        User user = serviceUtils.getUserByEmailOrThrow(email);
+        return new LoginResponse(null, user.getEmail(), user.getFullName(), user.getRole().name());
+    }
 }
+
+// plusSeconds là một phương thức của lớp Instant trong Java, được sử dụng để thêm một khoảng thời gian (tính bằng giây) vào một đối tượng Instant hiện tại. Khi bạn gọi user.setVerificationTokenExpiry(Instant.now().plusSeconds(86400)), nó sẽ thiết lập thời gian hết hạn của token là 24 giờ kể từ thời điểm hiện tại.
