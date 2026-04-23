@@ -1,5 +1,7 @@
 package com.nextflix.clone.dto.request;
 
+import com.nextflix.clone.dto.response.UserResponse;
+import jakarta.validation.Valid;
 import lombok.Data;
 
 @Data
