@@ -4,6 +4,10 @@ import com.nextflix.clone.service.FileUploadService;
 import com.nextflix.clone.util.FileHandleUtils;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -64,5 +68,91 @@ public class FileUploadServiceImpl implements FileUploadService {
         } catch (IOException ex) {
             throw new RuntimeException("File upload failed: " + ex.getMessage(), ex);
         }
+    }
+
+
+    @Override
+    public ResponseEntity<Resource> serviceVideo(String uuid, String rangeHeader) {
+        try {
+            Path filePath = FileHandleUtils.findFileByUuid(videoStorageLocation, uuid);
+            Resource resource = FileHandleUtils.createFullResource(filePath);
+
+            String fileName = resource.getFilename();
+            String contentType = FileHandleUtils.detectVideoContentType(fileName);
+
+            long fileLength = resource.contentLength();
+
+            if(isFullContentRequest(rangeHeader)) {
+                return buildFullVideoResponse(resource, contentType, fileLength);
+            }
+
+            return buildPartVideoResponse(fileName, contentType, fileLength, rangeHeader, filePath);
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public ResponseEntity<Resource> serveImage(String uuid) {
+        try {
+            Path filePath = FileHandleUtils.findFileByUuid(imageStorageLocation, uuid);
+            Resource resource = FileHandleUtils.createFullResource(filePath);
+
+            String fileName = resource.getFilename();
+            String contentType = FileHandleUtils.detectImageContentType(fileName);
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                    .body(resource);
+        } catch (Exception ex) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    private ResponseEntity<Resource> buildFullVideoResponse(Resource resource, String contentType, long fileLength) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + resource.getFilename() + "\"")
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileLength))
+                .body(resource);
+    }
+
+    private ResponseEntity<Resource> buildPartVideoResponse(String fileName, String contentType, long fileLength, String rangeHeader, Path filePath) throws IOException {
+        Long[] range = FileHandleUtils.parseRangeHeader(rangeHeader, fileLength);
+        long rangeStart = range[0];
+        long rangeEnd = range[1];
+
+        if(!isValidRange(rangeStart, rangeEnd, fileLength)) {
+            return buildRangeNotSatisfiableResponse(fileLength);
+        }
+
+        long contentLength = rangeEnd - rangeStart + 1;
+        Resource resource = FileHandleUtils.createResourceFromFile(filePath, rangeStart, contentLength);
+
+        return ResponseEntity.status(206)
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .header(HttpHeaders.CONTENT_RANGE, "bytes " + rangeStart + "-" + rangeEnd + "/" + fileLength)
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
+                .body(resource);
+    }
+
+    private ResponseEntity<Resource> buildRangeNotSatisfiableResponse(long fileLength) {
+        return ResponseEntity.status(416)
+                .header(HttpHeaders.CONTENT_RANGE, "bytes */" + fileLength)
+                .build();
+    }
+
+    private boolean isValidRange(long rangeStart, long rangeEnd, long fileLength) {
+        return rangeStart >= 0 && rangeEnd < fileLength && rangeStart <= rangeEnd;
+    }
+
+    private boolean isFullContentRequest(String rangeHeader) {
+        return rangeHeader == null || rangeHeader.isBlank() || rangeHeader.isEmpty();
+
     }
 }
