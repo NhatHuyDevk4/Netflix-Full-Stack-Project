@@ -3,11 +3,9 @@ package com.nextflix.clone.controller;
 
 import com.nextflix.clone.service.FileUploadService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
@@ -44,4 +42,21 @@ public class FileUploadController {
         response.put("size", String.valueOf(file.getSize()));
         return response;
     }
+
+    @GetMapping("/video/{uuid}")
+    public ResponseEntity<Resource> serviceVideo(
+            @PathVariable String uuid,
+            @RequestHeader(value = "Range", required = false) String rangeHeader,
+            @RequestHeader(value = "token", required = false) String tokenParam
+    ) {
+        return fileUploadService.serviceVideo(uuid, rangeHeader);
+    }
+
+
+    @GetMapping("/image/{uuid}")
+    public ResponseEntity<Resource> serviceImage(
+            @PathVariable String uuid
+    ) {
+        return fileUploadService.serveImage(uuid);
+     }
 }
